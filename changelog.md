@@ -1,3 +1,35 @@
+### v2.0.0
+
+* Fix example code in README.md
+* Fixed #122 - Missing comma in readme example
+* Cleared out the currentActionArgs at the end of the handle behavior. (Fixes #127)
+* Ignored example directory for npm publishes.
+* Updated npm scripts to include call-through for all gulp tasks.
+
+### v2.0.0-1
+
+* Refactored to use CommonJS modules and changed the build process to use webpack to generate a UMD.
+* Added the `transitioned` event, which fires after the `_onEnter` handler of a new state has completed execution.
+* Added support for additional custom arguments to be passed to the `transition` call, which then get passed as arguments to the `_onEnter` handler of the new state.
+* Fixed issue reported in #110, where behavioral FSMs were not correctly configuring the hierarchy (listening to correct child FSMs, reporting composite state correctly, etc.).
+* Removed Plato Reports.
+* Added Karma-based runner and related files.
+
+### v1.1.2
+
+* Internal improvements to the `Fsm` prototype, thanks to @igncp.
+
+### v1.1.1
+
+* Added `compositeState` method to the `BehavioralFsm` and `Fsm` prototypes.
+* Added compositeState assertions to tests where state is also being checked.
+* Fixed issue with atm example AccountView.
+* Tweaked istanbul setup to use gulp-spawn-mocha option.
+* Additional whitespace cleanup (removing last vestiges of node-beautify)
+
+### v1.1.0
+* This was an accidental re-publishing of v1.0.1. Oops.
+
 ### v1.0.1
 
 * Added JSCS, visited formatting overall

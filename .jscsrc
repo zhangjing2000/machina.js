@@ -3,11 +3,7 @@
 	"excludeFiles": [
 		"node_modules/**",
 		"coverage/**",
-		"example/**",
-		"bower/**",
-		"ext/**",
-		"report/**",
-		"lib/machina.min.js"
+		"lib/**"
 	],
 
 	"esnext": true,

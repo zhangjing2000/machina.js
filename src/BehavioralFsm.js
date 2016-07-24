@@ -1,11 +1,16 @@
-/* global _, getDefaultBehavioralOptions, machina, NEW_FSM, utils, getLeaklessArgs, NO_HANDLER, HANDLING, HANDLED, TRANSITION, NEXT_TRANSITION, INVALID_STATE, DEFERRED, emitter, extend, getChildFsmInstance */
+var _ = require( "lodash" );
+var utils = require( "./utils" );
+var emitter = require( "./emitter" );
+var topLevelEmitter = emitter.instance;
+var events = require( "./events" );
+
 var MACHINA_PROP = "__machina__";
 
 function BehavioralFsm( options ) {
 	_.extend( this, options );
-	_.defaults( this, getDefaultBehavioralOptions() );
+	_.defaults( this, utils.getDefaultBehavioralOptions() );
 	this.initialize.apply( this, arguments );
-	machina.emit( NEW_FSM, this );
+	topLevelEmitter.emit( events.NEW_FSM, this );
 }
 
 _.extend( BehavioralFsm.prototype, {
@@ -20,6 +25,24 @@ _.extend( BehavioralFsm.prototype, {
 			throw new Error( "The initial state specified does not exist in the states object." );
 		}
 		this.transition( client, initialState );
+	},
+
+	configForState: function configForState( newState ) {
+		var newStateObj = this.states[ newState ];
+		var child;
+		_.each( this.hierarchy, function( childListener, key ) {
+			if ( childListener && typeof childListener.off === "function" ) {
+				childListener.off();
+			}
+		} );
+
+		if ( newStateObj._child ) {
+			newStateObj._child = utils.getChildFsmInstance( newStateObj._child );
+			child = newStateObj._child && newStateObj._child.instance;
+			this.hierarchy[ child.namespace ] = utils.listenToChild( this, child );
+		}
+
+		return child;
 	},
 
 	ensureClientMeta: function ensureClientMeta( client ) {
@@ -56,6 +79,10 @@ _.extend( BehavioralFsm.prototype, {
 			[ _args[ 0 ] ].concat( _args.slice( 2 ) );
 	},
 
+	getSystemHandlerArgs: function( args, client ) {
+		return [ client ].concat( args );
+	},
+
 	handle: function( client, input ) {
 		var inputDef = input;
 		if ( typeof input === "undefined" ) {
@@ -65,7 +92,7 @@ _.extend( BehavioralFsm.prototype, {
 			inputDef = { inputType: input, delegated: false, ticket: undefined };
 		}
 		var clientMeta = this.ensureClientMeta( client );
-		var args = getLeaklessArgs( arguments );
+		var args = utils.getLeaklessArgs( arguments );
 		if ( typeof input !== "object" ) {
 			args.splice( 1, 1, inputDef );
 		}
@@ -79,7 +106,7 @@ _.extend( BehavioralFsm.prototype, {
 		var result;
 		var action;
 		if ( !clientMeta.inExitHandler ) {
-			child = stateObj._child && stateObj._child.instance;
+			child = this.configForState( currentState );
 			if ( child && !this.pendingDelegations[ inputDef.ticket ] && !inputDef.bubbling ) {
 				inputDef.ticket = ( inputDef.ticket || utils.createUUID() );
 				inputDef.delegated = true;
@@ -101,19 +128,20 @@ _.extend( BehavioralFsm.prototype, {
 					{ inputType: inputDef.inputType, delegated: inputDef.delegated, ticket: inputDef.ticket }
 				);
 				if ( !handler ) {
-					this.emit( NO_HANDLER, _.extend( { args: args }, eventPayload ) );
+					this.emit( events.NO_HANDLER, _.extend( { args: args }, eventPayload ) );
 				} else {
-					this.emit( HANDLING, eventPayload );
+					this.emit( events.HANDLING, eventPayload );
 					if ( typeof handler === "function" ) {
 						result = handler.apply( this, this.getHandlerArgs( args, isCatchAll ) );
 					} else {
 						result = handler;
 						this.transition( client, handler );
 					}
-					this.emit( HANDLED, eventPayload );
+					this.emit( events.HANDLED, eventPayload );
 				}
 				clientMeta.priorAction = clientMeta.currentAction;
 				clientMeta.currentAction = "";
+				clientMeta.currentActionArgs = undefined;
 			}
 		}
 		return result;
@@ -125,44 +153,38 @@ _.extend( BehavioralFsm.prototype, {
 		var curStateObj = this.states[ curState ];
 		var newStateObj = this.states[ newState ];
 		var child;
+		var args = utils.getLeaklessArgs( arguments ).slice( 2 );
 		if ( !clientMeta.inExitHandler && newState !== curState ) {
 			if ( newStateObj ) {
-				if ( newStateObj._child ) {
-					newStateObj._child = getChildFsmInstance( newStateObj._child );
-					child = newStateObj._child && newStateObj._child.instance;
-				}
+				child = this.configForState( newState );
 				if ( curStateObj && curStateObj._onExit ) {
 					clientMeta.inExitHandler = true;
 					curStateObj._onExit.call( this, client );
 					clientMeta.inExitHandler = false;
 				}
-				if ( curStateObj && curStateObj._child && curStateObj._child.instance && this.hierarchy[ curStateObj._child.instance.namespace ] ) {
-					this.hierarchy[ curStateObj._child.instance.namespace ].off();
-				}
 				clientMeta.targetReplayState = newState;
 				clientMeta.priorState = curState;
 				clientMeta.state = newState;
-				if ( child ) {
-					this.hierarchy[ child.namespace ] = utils.listenToChild( this, child );
-				}
 				var eventPayload = this.buildEventPayload( client, {
 					fromState: clientMeta.priorState,
 					action: clientMeta.currentAction,
 					toState: newState
 				} );
-				this.emit( TRANSITION, eventPayload );
+				this.emit( events.TRANSITION, eventPayload );
 				if ( newStateObj._onEnter ) {
-					newStateObj._onEnter.call( this, client );
+					newStateObj._onEnter.apply( this, this.getSystemHandlerArgs( args, client ) );
+					this.emit( events.TRANSITIONED, eventPayload );
 				}
 				if ( child ) {
 					child.handle( client, "_reset" );
 				}
+
 				if ( clientMeta.targetReplayState === newState ) {
-					this.processQueue( client, NEXT_TRANSITION );
+					this.processQueue( client, events.NEXT_TRANSITION );
 				}
 				return;
 			}
-			this.emit( INVALID_STATE, this.buildEventPayload( client, {
+			this.emit( events.INVALID_STATE, this.buildEventPayload( client, {
 				state: clientMeta.state,
 				attemptedState: newState
 			} ) );
@@ -173,7 +195,7 @@ _.extend( BehavioralFsm.prototype, {
 		var clientMeta = this.ensureClientMeta( client );
 		if ( clientMeta.currentActionArgs ) {
 			var queued = {
-				type: NEXT_TRANSITION,
+				type: events.NEXT_TRANSITION,
 				untilState: stateName,
 				args: clientMeta.currentActionArgs
 			};
@@ -182,7 +204,7 @@ _.extend( BehavioralFsm.prototype, {
 				state: clientMeta.state,
 				queuedArgs: queued
 			} );
-			this.emit( DEFERRED, eventPayload );
+			this.emit( events.DEFERRED, eventPayload );
 		}
 	},
 
@@ -213,7 +235,19 @@ _.extend( BehavioralFsm.prototype, {
 			};
 			clientMeta.inputQueue = _.filter( clientMeta.inputQueue, filter );
 		}
-	}
-}, emitter );
+	},
 
-BehavioralFsm.extend = extend;
+	compositeState: function( client ) {
+		var clientMeta = this.ensureClientMeta( client );
+		var state = clientMeta.state;
+		var child = this.states[state]._child && this.states[state]._child.instance;
+		if ( child ) {
+			state += "." + child.compositeState( client );
+		}
+		return state;
+	}
+}, emitter.getInstance() );
+
+BehavioralFsm.extend = utils.extend;
+
+module.exports = BehavioralFsm;

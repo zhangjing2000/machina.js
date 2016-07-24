@@ -1,6 +1,8 @@
-/* global BehavioralFsm, _, utils, getDefaultClientMeta */
-/* jshint -W098 */
-var Fsm = BehavioralFsm.extend( {
+var BehavioralFsm = require( "./BehavioralFsm" );
+var utils = require( "./utils" );
+var _ = require( "lodash" );
+
+var Fsm = {
 	constructor: function() {
 		BehavioralFsm.apply( this, arguments );
 		this.ensureClientMeta();
@@ -18,7 +20,7 @@ var Fsm = BehavioralFsm.extend( {
 	ensureClientMeta: function ensureClientMeta() {
 		if ( !this._stamped ) {
 			this._stamped = true;
-			_.defaults( this, _.cloneDeep( getDefaultClientMeta() ) );
+			_.defaults( this, _.cloneDeep( utils.getDefaultClientMeta() ) );
 			this.initClient();
 		}
 		return this;
@@ -49,6 +51,11 @@ var Fsm = BehavioralFsm.extend( {
 			_args.slice( 1 ) :
 			_args.slice( 2 );
 	},
+
+	getSystemHandlerArgs: function( args, client ) {
+		return args;
+	},
+
 	// "classic" machina FSM do not emit the client property on events (which would be the FSM itself)
 	buildEventPayload: function() {
 		var args = this.ensureClientArg( utils.getLeaklessArgs( arguments ) );
@@ -58,25 +65,22 @@ var Fsm = BehavioralFsm.extend( {
 		} else {
 			return { data: data || null, namespace: this.namespace };
 		}
-	},
-	handle: function( inputType ) {
-		var args = this.ensureClientArg( utils.getLeaklessArgs( arguments ) );
-		return BehavioralFsm.prototype.handle.apply( this, args );
-	},
-	transition: function( newState ) {
-		var args = this.ensureClientArg( utils.getLeaklessArgs( arguments ) );
-		return BehavioralFsm.prototype.transition.apply( this, args );
-	},
-	deferUntilTransition: function( stateName ) {
-		var args = this.ensureClientArg( utils.getLeaklessArgs( arguments ) );
-		return BehavioralFsm.prototype.deferUntilTransition.apply( this, args );
-	},
-	processQueue: function() {
-		var args = this.ensureClientArg( utils.getLeaklessArgs( arguments ) );
-		return BehavioralFsm.prototype.processQueue.apply( this, args );
-	},
-	clearQueue: function( stateName ) {
-		var args = this.ensureClientArg( utils.getLeaklessArgs( arguments ) );
-		return BehavioralFsm.prototype.clearQueue.apply( this, args );
 	}
+};
+
+_.each( [
+	"handle",
+	"transition",
+	"deferUntilTransition",
+	"processQueue",
+	"clearQueue"
+], function( methodWithClientInjected ) {
+	Fsm[ methodWithClientInjected ] = function() {
+		var args = this.ensureClientArg( utils.getLeaklessArgs( arguments ) );
+		return BehavioralFsm.prototype[ methodWithClientInjected ].apply( this, args );
+	};
 } );
+
+Fsm = BehavioralFsm.extend( Fsm );
+
+module.exports = Fsm;

@@ -1,5 +1,6 @@
-/* global _ */
-
+var _ = require( "lodash" );
+var machina = require( "../lib/machina.js" );
+var specFactory = require( "./helpers/fsmFactory.js" )( machina );
 /*
     This is a spec factory that takes a description and
     an object containing factory methods necessary to get
@@ -106,7 +107,7 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 							namespace: fsm.namespace
 						}
 					} );
-					events[ 4 ].should.eql( {
+					events[ 5 ].should.eql( {
 						eventName: "handled",
 						data: {
 							client: client,
@@ -117,6 +118,7 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 						}
 					} );
 					client.__machina__[ fsm.namespace ].state.should.equal( "ready" );
+					fsm.compositeState( client ).should.equal( "ready" );
 				} );
 				it( "should handle input with arguments", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -130,6 +132,7 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 					res = fsm.handle( client, "canWeDoThis", "Grace Hopper" );
 					res.should.equal( "yep, Grace Hopper can do it." );
 					client.__machina__[ fsm.namespace ].state.should.equal( "ready" );
+					fsm.compositeState( client ).should.equal( "ready" );
 				} );
 				it( "should handle an object form inputType", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -149,7 +152,7 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 							namespace: fsm.namespace
 						}
 					} );
-					events[ 4 ].should.eql( {
+					events[ 5 ].should.eql( {
 						eventName: "handled",
 						data: {
 							client: client,
@@ -160,6 +163,7 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 						}
 					} );
 					client.__machina__[ fsm.namespace ].state.should.equal( "ready" );
+					fsm.compositeState( client ).should.equal( "ready" );
 				} );
 				it( "should handle object form inputType on catch-all handlers", function() {
 					var passedClient, passedInputType;
@@ -214,6 +218,16 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 						}
 					} );
 					events[ 3 ].should.eql( { eventName: "ready-OnEnterFiring", data: undefined } );
+					events[ 4 ].should.eql( {
+						eventName: "transitioned",
+						data: {
+							fromState: "uninitialized",
+							action: "uninitialized.start",
+							toState: "ready",
+							client: client,
+							namespace: fsm.namespace
+						}
+					} );
 				} );
 				it( "should emit an 'invalidstate' event when attempting to transition into a non-existent state", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -315,6 +329,16 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 						{
 							eventName: "ready-OnEnterFiring",
 							data: undefined
+						},
+						{
+							data: {
+								action: "uninitialized.start",
+								client: client,
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "ready"
+							},
+							eventName: "transitioned"
 						},
 						{
 							eventName: "handling",
@@ -454,6 +478,16 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 							data: undefined
 						},
 						{
+							data: {
+								action: "",
+								client: client,
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "done"
+							},
+							eventName: "transitioned"
+						},
+						{
 							eventName: "handling",
 							data: {
 								client: client,
@@ -549,6 +583,16 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 						{
 							eventName: "ready-OnEnterFiring",
 							data: undefined
+						},
+						{
+							data: {
+								action: "uninitialized.letsDoThis",
+								client: client,
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "ready"
+							},
+							eventName: "transitioned"
 						},
 						{
 							eventName: "handling",
@@ -746,6 +790,16 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 							data: undefined
 						},
 						{
+							eventName: "transitioned",
+							data: {
+								action: "uninitialized.start",
+								client: client,
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "ready"
+							}
+						},
+						{
 							eventName: "handled",
 							data: {
 								client: client,
@@ -856,7 +910,7 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 					fsm.handle( client, "start" );
 					events.map( function( evnt ) {
 						return evnt.eventName;
-					} ).should.eql( [ "transition", "handling", "transition", "ready-OnEnterFiring", "handled" ] );
+					} ).should.eql( [ "transition", "handling", "transition", "ready-OnEnterFiring", "transitioned", "handled" ] );
 				} );
 				it( "should allow specific events to be subscribed to", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -1090,8 +1144,30 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 
 					fsmB.handle( clientB, "letsDoThis" );
 					fsmB.handle( clientB, "start" );
-					eventA.length.should.equal( 5 );
-					eventB.length.should.equal( 4 );
+					eventA.length.should.equal( 6 );
+					eventB.length.should.equal( 5 );
+				} );
+			} );
+			describe( "When passing arguments to transition", function() {
+				it( "should pass the arguments to the _onEnter handler", function() {
+					var custom;
+					var fsm = fsmFactory.instanceWithOptions( {
+						states: {
+							uninitialized: {
+								start: function( client ) {
+									this.transition( client, "ready", "Custom args!" );
+								}
+							},
+							ready: {
+								_onEnter: function( client, customArgs ) {
+									custom = customArgs;
+								}
+							}
+						}
+					} );
+					var client = { name: "Dijkstra" };
+					fsm.handle( client, "start" );
+					custom.should.equal( "Custom args!" );
 				} );
 			} );
 			if ( fsmFactory.extendingWithStaticProps ) {
@@ -1106,6 +1182,6 @@ function runBehavioralFsmSpec( description, fsmFactory ) {
 	} );
 }
 
-_.each( global.specFactory.behavioral, function( val, key ) {
+_.each( specFactory.behavioral, function( val, key ) {
 	runBehavioralFsmSpec( key, val );
 } );

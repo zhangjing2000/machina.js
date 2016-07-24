@@ -1,4 +1,6 @@
-/* global _ */
+var _ = require( "lodash" );
+var machina = require( "../lib/machina.js" );
+var specFactory = require( "./helpers/fsmFactory.js" )( machina );
 
 /*
     This is a spec factory that takes a description and
@@ -37,18 +39,19 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 				} );
 				it( "should transition to the intialState", function() {
 					fsm.state.should.equal( "uninitialized" );
+					fsm.compositeState().should.equal( "uninitialized" );
 				} );
 				it( "should set the expected states and input handlers", function() {
 					fsm.states.should.eql( fsmFactory.options.states );
 				} );
 				it( "should throw if the initialState prop isn't set", function() {
 					( function() {
-						var fsm = fsmFactory.instanceWithOptions( { initialState: null } );
+						fsmFactory.instanceWithOptions( { initialState: null } );
 					} ).should.throw( /You must specify an initial state for this FSM/ );
 				} );
 				it( "should throw if the initial state specified doesn't exist", function() {
 					( function() {
-						var fsm = fsmFactory.instanceWithOptions( { initialState: "howdy" } );
+						fsmFactory.instanceWithOptions( { initialState: "howdy" } );
 					} ).should.throw( /The initial state specified does not exist in the states object/ );
 				} );
 				it( "should invoke a custom initialize method", function() {
@@ -83,7 +86,7 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 							namespace: fsm.namespace
 						}
 					} );
-					events[ 3 ].should.eql( {
+					events[ 4 ].should.eql( {
 						eventName: "handled",
 						data: {
 							inputType: "start",
@@ -93,6 +96,7 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 						}
 					} );
 					fsm.state.should.equal( "ready" );
+					fsm.compositeState().should.equal( "ready" );
 				} );
 				it( "should handle input with arguments", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -105,6 +109,7 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 					res = fsm.handle( "canWeDoThis", "Grace Hopper" );
 					res.should.equal( "yep, Grace Hopper can do it." );
 					fsm.state.should.equal( "ready" );
+					fsm.compositeState().should.equal( "ready" );
 				} );
 				it( "should handle an object form inputType", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -122,7 +127,7 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 							namespace: fsm.namespace
 						}
 					} );
-					events[ 3 ].should.eql( {
+					events[ 4 ].should.eql( {
 						eventName: "handled",
 						data: { inputType: "start",
 							delegated: true,
@@ -130,6 +135,7 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 							namespace: fsm.namespace }
 					} );
 					fsm.state.should.equal( "ready" );
+					fsm.compositeState().should.equal( "ready" );
 				} );
 				it( "should transition properly", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -231,6 +237,15 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 						{
 							eventName: "ready-OnEnterFiring",
 							data: undefined
+						},
+						{
+							data: {
+								action: "uninitialized.start",
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "ready"
+							},
+							eventName: "transitioned"
 						},
 						{
 							eventName: "handling",
@@ -351,6 +366,15 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 							data: undefined
 						},
 						{
+							data: {
+								action: "",
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "done"
+							},
+							eventName: "transitioned"
+						},
+						{
 							eventName: "handling",
 							data: {
 								inputType: "letsDoThis",
@@ -430,6 +454,15 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 						{
 							eventName: "ready-OnEnterFiring",
 							data: undefined
+						},
+						{
+							data: {
+								action: "uninitialized.letsDoThis",
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "ready"
+							},
+							eventName: "transitioned"
 						},
 						{
 							eventName: "handling",
@@ -605,6 +638,15 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 							data: undefined
 						},
 						{
+							data: {
+								action: "uninitialized.start",
+								fromState: "uninitialized",
+								namespace: "specialSauceNamespace",
+								toState: "ready"
+							},
+							eventName: "transitioned"
+						},
+						{
 							eventName: "handled",
 							data: {
 								inputType: "start",
@@ -694,7 +736,7 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 					fsm.handle( "start" );
 					events.map( function( evnt ) {
 						return evnt.eventName;
-					} ).should.eql( [ "handling", "transition", "ready-OnEnterFiring", "handled" ] );
+					} ).should.eql( [ "handling", "transition", "ready-OnEnterFiring", "transitioned", "handled" ] );
 				} );
 				it( "should allow specific events to be subscribed to", function() {
 					var fsm = fsmFactory.instanceWithOptions();
@@ -805,18 +847,41 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 
 					fsmA.initialState.should.equal( "uninitialized" );
 					fsmA.state.should.equal( "uninitialized" );
+					fsmA.compositeState().should.equal( "uninitialized" );
 					fsmB.initialState.should.equal( "done" );
 					fsmB.state.should.equal( "done" );
+					fsmB.compositeState().should.equal( "done" );
 
 					// Acting on fsmA should not affect fsmB
 					fsmA.handle( "start" );
-					eventA.length.should.equal( 4 );
+					eventA.length.should.equal( 5 );
 					eventB.length.should.equal( 0 );
 
 					fsmB.handle( "letsDoThis" );
 					fsmB.handle( "start" );
-					eventA.length.should.equal( 4 );
+					eventA.length.should.equal( 5 );
 					eventB.length.should.equal( 2 );
+				} );
+			} );
+			describe( "When passing arguments to transition", function() {
+				it( "should pass the arguments to the _onEnter handler", function() {
+					var custom;
+					var fsm = fsmFactory.instanceWithOptions( {
+						states: {
+							uninitialized: {
+								start: function() {
+									this.transition( "ready", "Custom args!" );
+								}
+							},
+							ready: {
+								_onEnter: function( customArgs ) {
+									custom = customArgs;
+								}
+							}
+						}
+					} );
+					fsm.handle( "start" );
+					custom.should.equal( "Custom args!" );
 				} );
 			} );
 			if ( fsmFactory.extendingWithStaticProps ) {
@@ -831,6 +896,6 @@ function runMachinaFsmSpec( description, fsmFactory ) {
 	} );
 }
 
-_.each( global.specFactory.machinaFsm, function( val, key ) {
+_.each( specFactory.machinaFsm, function( val, key ) {
 	runMachinaFsmSpec( key, val );
 } );
